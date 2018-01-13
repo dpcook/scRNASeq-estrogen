@@ -1,0 +1,101 @@
+---
+title: "scRNA-Seq Anlaysis - 03 - Normalization"
+output:
+  github_document:
+    toc: true
+---
+
+# Dependencies
+```{r}
+library(scater)
+library(scran)
+library(limma)
+```
+
+# Load the data
+```{r}
+sce <- readRDS("../output/sce.filtered.rds")
+```
+
+# Normalization using size factors
+
+We'll use the approach by Aaron Lun, implemented in scran, which deconvolutes pooled size factors.
+
+## Calculate size factors
+First we'll do a quick cluster so that the pooled cells are related
+```{r}
+qclust <- scran::quickCluster(sce, min.size=30, assay.type="logcounts")
+sce <- computeSumFactors(sce, sizes=30, clusters=qclust, assay.type="logcounts") #sizes must be > 2x smallest cluster
+summary(sizeFactors(sce))
+```
+
+```{r, fig.width=3.5, fig.height=3.2}
+plot(sizeFactors(sce), sce$total_counts/1e3, log="xy", pch=20,
+     ylab="Library size (thousands)", xlab="Size factor", main="")
+```
+
+
+## Normalize
+```{r}
+sce <- normalize(sce, exprs_values="counts")
+```
+
+# Assess confounding variables
+```{r, fig.height=3.4, fig.width=4.75}
+plotPCA(sce, exprs_values="logcounts", colour_by="Condition")
+plotPCA(sce, exprs_values="logcounts", colour_by="total_features")
+plotPCA(sce, exprs_values="logcounts", colour_by="IFC.Column")
+plotPCA(sce, exprs_values="logcounts", colour_by="IFC.Row")
+```
+
+There's a clear effect from total_features, as well as some IFC column batch effects. We can normalize these effects out.
+
+## Normalizing out IFC.Column
+I want to remove this first because it's kind of annoying to deal with because control cells are IFC.Column 1-10 and E2 cells are 11-20, so if you normalize out the effect of all IFC columns together, you remove out condition effects. To deal with this, I'll deal with each condition separately, then merge together the the normalized values
+```{r}
+sce.control <- scater::filter(sce, Condition=="Control")
+sce.control$IFC.Column <- factor(sce.control$IFC.Column,
+                                 levels=unique(sce.control$IFC.Column))
+exp.control.rm <- removeBatchEffect(logcounts(sce.control),
+                                    batch=sce.control$IFC.Column)
+                                 
+                                 
+sce.estrogen <- scater::filter(sce, Condition=="Estrogen")
+sce.estrogen$IFC.Column <- factor(sce.estrogen$IFC.Column,
+                                         levels=unique(sce.estrogen$IFC.Column))
+exp.estrogen.rm <- removeBatchEffect(logcounts(sce.estrogen),
+                                    batch=sce.estrogen$IFC.Column)
+
+exp <- cbind(exp.control.rm, exp.estrogen.rm)
+#Some values <0. These values are typically lowly expressed genes, so it's usually safe to set them to 0
+exp[exp<0] <- 0
+assay(sce, "exprs.ifc.rm") <- exp
+```
+
+## Total_features and IFC.Row
+```{r}
+exp.removed <- removeBatchEffect(exp,
+                                 batch=sce$IFC.Row,
+                                 covariates=sce$total_features,
+                                 design=model.matrix(~sce$Condition))
+#Once again some <0 values arise
+exp.removed[exp.removed<0] <- 0
+assay(sce, "exprs.norm") <- exp.removed
+```
+
+
+#Re-assessing structure 
+
+```{r, fig.height=3.4, fig.width=4.75}
+plotPCA(sce, exprs_values="exprs.norm", shape_by="Condition", 
+        colour_by="Condition", theme_size=12)
+plotPCA(sce, exprs_values="exprs.norm", shape_by="Condition",
+        colour_by="total_features", theme_size=12)
+plotPCA(sce, exprs_values="exprs.norm", shape_by="Condition", 
+        colour_by="IFC.Column", theme_size=12)
+```
+
+#Save point
+```{r}
+saveRDS(sce, file="../output/sceset.normalized.rds")
+```

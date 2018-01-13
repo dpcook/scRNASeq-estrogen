@@ -1,0 +1,113 @@
+---
+title: "scRNA-Seq Anlaysis - 01 - Processing"
+output:
+  github_document:
+    toc: true
+---
+
+The following scRNA-Seq data was generated with the Fluidigm C1 HT 3' mRNA-Seq protocol. The samples are control and estrogen-treated primary cultures of ovarian epithelial cells. Fastq files were demultiplexed using Fluidigm's API, and the resulting fastq files for each individual capture site were processed with Kallisto. 
+
+# Dependencies
+
+```{r}
+library(scater)
+library(tximport)
+library(dplyr)
+library(EnsDb.Mmusculus.v79)
+library(biomaRt)
+library(readr)
+```
+
+# Load the data
+
+Getting the file names ready
+```{r}
+row.id <- paste0("ROW", 1:40)
+column.id <- rep(1:20, 40) %>% sort()
+zero.padding <- c(rep("0", 40*9), rep("", 40*11))
+column.id <- paste0(zero.padding, column.id)
+column.id<- paste0("COL", column.id, "_")
+samples <- paste0(column.id, row.id)
+directories <- samples
+head(samples)
+```
+
+Loading it in
+```{r}
+edb <- EnsDb.Mmusculus.v79
+Tx <- transcripts(edb, return.type="DataFrame")
+tx2gene <- Tx[,c(1,7)]
+
+files <- file.path(samples, "abundance.tsv")
+txi <- tximport(paste0("/Volumes/ExternalHD/2017-E2-scRNA-Seq/output/kallisto/",files),
+                type="kallisto", tx2gene=tx2gene,
+                countsFromAbundance="no")
+colnames(txi$counts) <- samples
+colnames(txi$abundance) <- samples
+rm(tx2gene, files, row.id, column.id, zero.padding, directories)
+```
+
+# Move data into scater
+
+Scater takes the expression matrix, colData (cell attributes), and rowData (gene attributes)
+
+## colData
+```{r}
+cell.info <- as.data.frame(samples)
+rownames(cell.info) <- samples
+colnames(cell.info) <- "Cell"
+cell.info$Condition <- c(rep("Control", 400), rep("Estrogen", 400))
+cell.info$Condition <- factor(cell.info$Condition, levels=unique(cell.info$Condition))
+cell.info$IFC.Column <- rep(1:20, 40) %>% sort(decreasing=F)
+cell.info$IFC.Column <- factor(cell.info$IFC.Column, levels=unique(cell.info$IFC.Column))
+cell.info$IFC.Row <- rep(1:40, 20)
+cell.info$IFC.Row <- factor(cell.info$IFC.Row, levels=unique(cell.info$IFC.Row))
+rownames(cell.info) <- cell.info$Cell
+#Cell number and visual quality assessment of each cell was manually entered into an Excel file
+#during microscopic inspection of the IFC after capture
+ifc.annotation <- read.table("../data/IFC.Annotation.txt",
+                             sep="\t", header=T)
+cell.info$CellNumber <- ifc.annotation$CellNumber
+```
+
+## Setting up the SingleCellExperiment
+```{r}
+sce <- SingleCellExperiment(assays = list(counts=txi$counts),
+                            colData=cell.info)
+sce <- calculateQCMetrics(sce) 
+```
+
+## Adding rowData
+
+```{r}
+ensembl <- useMart("ensembl")
+ensembl <- useDataset("mmusculus_gene_ensembl", mart=ensembl)
+ensembl_symbols <- getBM(attributes=c("ensembl_gene_id", "mgi_symbol"),
+                         filters="ensembl_gene_id",
+                         values=rownames(counts(sce)),
+                         mart=ensembl)
+```
+
+Annotating the genes a little
+```{r}
+is.mito <- ensembl_symbols[grepl("^mt-",
+                                 ensembl_symbols$mgi_symbol),]$ensembl_gene_id
+is.protein <- dplyr::filter(as.data.frame(Tx), tx_biotype=="protein_coding")$gene_id
+
+rowData(sce)$ensembl_gene_id <- rownames(counts(sce))
+rowData(sce)$is.mito <- rownames(counts(sce)) %in% is.mito
+rowData(sce)$is.protein <- rownames(counts(sce)) %in% is.protein
+
+sce <- calculateQCMetrics(sce, feature_controls=list(Mt=is.mito))
+```
+
+## Adding exprs (log2+1) slot
+```{r}
+exprs(sce) <- log2(counts(sce) + 1)
+```
+
+# Save the data
+
+```{r}
+saveRDS(sce, file="../output/sce.processed.rds")
+```
