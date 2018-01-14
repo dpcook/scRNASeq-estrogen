@@ -9,6 +9,7 @@ scRNA-Seq Anlaysis - 03 - Normalization
 -   [Assess confounding variables](#assess-confounding-variables)
     -   [Normalizing out IFC.Column](#normalizing-out-ifc.column)
     -   [Total\_features and IFC.Row](#total_features-and-ifc.row)
+    -   [Cell Cycle Classification](#cell-cycle-classification)
 -   [Re-assessing structure](#re-assessing-structure)
 -   [Save point](#save-point)
 
@@ -238,6 +239,37 @@ exp.removed[exp.removed<0] <- 0
 assay(sce, "exprs.norm") <- exp.removed
 ```
 
+Cell Cycle Classification
+-------------------------
+
+Just to see if cell cycle is driving any of the structure, we'll classify cells based on their expression of cell cycle markers. For this, we'll use cyclone, which is implemented in the scran pacage.
+
+``` r
+mm.pairs <- readRDS(system.file("exdata", "mouse_cycle_markers.rds", package="scran"))
+assignments <- cyclone(sce, mm.pairs, gene.names=rownames(sce))
+plot(assignments$score$G1, assignments$score$G2M, xlab="G1 score", ylab="G2/M score", pch=16)
+```
+
+![](03-normalization_files/figure-markdown_github/unnamed-chunk-9-1.png)
+
+``` r
+data.frame(G1=sum(assignments$phases=="G1"), G2M=sum(assignments$phases=="G2M"),
+           S=sum(assignments$phases=="S"))
+```
+
+    ##    G1 G2M S
+    ## 1 613  23 4
+
+Adding the assignments to colData
+
+``` r
+sce$CellCycle <- assignments$phases
+plotPCA(sce, exprs_values="exprs.norm", colour_by="CellCycle", shape_by="Condition",
+        theme_size=14)
+```
+
+![](03-normalization_files/figure-markdown_github/unnamed-chunk-11-1.png)
+
 Re-assessing structure
 ======================
 
@@ -246,25 +278,25 @@ plotPCA(sce, exprs_values="exprs.norm", shape_by="Condition",
         colour_by="Condition", theme_size=12)
 ```
 
-![](03-normalization_files/figure-markdown_github/unnamed-chunk-9-1.png)
+![](03-normalization_files/figure-markdown_github/unnamed-chunk-12-1.png)
 
 ``` r
 plotPCA(sce, exprs_values="exprs.norm", shape_by="Condition",
         colour_by="total_features", theme_size=12)
 ```
 
-![](03-normalization_files/figure-markdown_github/unnamed-chunk-9-2.png)
+![](03-normalization_files/figure-markdown_github/unnamed-chunk-12-2.png)
 
 ``` r
 plotPCA(sce, exprs_values="exprs.norm", shape_by="Condition", 
         colour_by="IFC.Column", theme_size=12)
 ```
 
-![](03-normalization_files/figure-markdown_github/unnamed-chunk-9-3.png)
+![](03-normalization_files/figure-markdown_github/unnamed-chunk-12-3.png)
 
 Save point
 ==========
 
 ``` r
-saveRDS(sce, file="../output/sceset.normalized.rds")
+saveRDS(sce, file="../output/sce.normalized.rds")
 ```

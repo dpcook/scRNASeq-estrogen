@@ -84,6 +84,27 @@ assay(sce, "exprs.norm") <- exp.removed
 ```
 
 
+## Cell Cycle Classification
+Just to see if cell cycle is driving any of the structure, we'll classify cells based on their expression of cell cycle markers. For this, we'll use cyclone, which is implemented in the scran pacage.
+
+```{r, fig.height=3.4, fig.width=4.75}
+mm.pairs <- readRDS(system.file("exdata", "mouse_cycle_markers.rds", package="scran"))
+assignments <- cyclone(sce, mm.pairs, gene.names=rownames(sce))
+plot(assignments$score$G1, assignments$score$G2M, xlab="G1 score", ylab="G2/M score", pch=16)
+```
+
+```{r}
+data.frame(G1=sum(assignments$phases=="G1"), G2M=sum(assignments$phases=="G2M"),
+           S=sum(assignments$phases=="S"))
+```
+
+Adding the assignments to colData
+```{r, fig.height=3.4, fig.width=4.75}
+sce$CellCycle <- assignments$phases
+plotPCA(sce, exprs_values="exprs.norm", colour_by="CellCycle", shape_by="Condition",
+        theme_size=14)
+```
+
 #Re-assessing structure 
 
 ```{r, fig.height=3.4, fig.width=4.75}
@@ -97,5 +118,5 @@ plotPCA(sce, exprs_values="exprs.norm", shape_by="Condition",
 
 #Save point
 ```{r}
-saveRDS(sce, file="../output/sceset.normalized.rds")
+saveRDS(sce, file="../output/sce.normalized.rds")
 ```
