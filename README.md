@@ -9,8 +9,8 @@ Analysis of scRNA-Seq data generated using the Fluidigm C1 HT mRNA-Seq protocol
 
 [3. Normalizing](https://github.com/dpcook/scRNASeq-estrogen/blob/master/notebooks/03-normalization.md)
 
-[4. Imputation]()
+[4. Imputation](https://github.com/dpcook/scRNASeq-estrogen/blob/master/notebooks/04-imputation.md)
 
-[5. Clustering]()
+[5. Clustering](https://github.com/dpcook/scRNASeq-estrogen/blob/master/notebooks/05-clustering.md)
 
 [6. Pseudotime analysis]()
